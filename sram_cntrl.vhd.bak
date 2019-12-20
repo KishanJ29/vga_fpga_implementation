@@ -1,0 +1,107 @@
+	
+	library ieee;
+			use ieee.std_logic_1164.all;
+			use ieee.numeric_std.all;
+	entity sram_cntrl is 
+--		generic(
+--				   OutEna : std_logic;
+--				   WrEnSet : std_logic := '0';
+--					chipselect : std_logic := '0';
+--					HIMasKbit : std_logic := '0';
+--					LOMasKbit : std_logic := '0'
+--				 );
+		port(
+				clk : in std_logic;
+				row : in integer;
+				col : in integer;
+				DispEna : in std_logic;
+				
+				sram_data : inout std_logic_vector(15 downto 0);
+				sram_addr : out std_logic_vector(17 downto 0);
+				sram_ChipEna : buffer std_logic; --/CE
+				sram_WrEna  : buffer std_logic;  --/WE
+				sram_OutEna : buffer std_logic; --/OE
+				sram_HiMask : buffer std_logic;  -- /LoByteEn
+				sram_LoMask : buffer std_logic;  -- /HiByteEn
+				
+				R  : buffer std_logic_vector(9 downto 0);
+				G,B: out std_logic_vector(9 downto 0)
+			);
+	end entity;
+	
+architecture behave of sram_cntrl is 
+	 
+	type  sram_mode is (FIRST, SECOND, THIRD, FOURTH);
+	signal SRAM_ARRAY : std_logic_vector(4 downto 0);
+	signal PixCount : unsigned(14 downto 0):=(others =>'0');
+	signal curr_sram_mode : sram_mode;
+	signal dataFlag :  std_logic := '0';
+	
+	
+begin
+---------------------------------------------------------------------
+--						VGA set to MONOCHROME DISPLAY eqating R=G=B
+---------------------------------------------------------------------		
+		G <= R;
+		B <= R;
+---------------------------------------------------------------------
+		
+		sram_data <= (others => 'Z') when dataFlag = '0'  else (others => '0');
+	   sram_ChipEna <=SRAM_ARRAY(4);
+	   sram_OutEna <= SRAM_ARRAY(3); 
+		sram_WrEna  <= SRAM_ARRAY(2);
+		sram_LoMask <= SRAM_ARRAY(1);
+		sram_HiMask <= SRAM_ARRAY(0);
+
+
+	  
+--------------------------------------------------------------------
+--			 		Pixel Counter
+--------------------------------------------------------------------
+		process()
+		begin
+			
+		end process;
+		
+---------------------------------------------------------------------
+		-- 		SRAM FSM
+---------------------------------------------------------------------
+		process(clk,DispEna)
+		begin
+			if(DispEna = '0')then
+				--mode: idle_NOP
+				curr_sram_mode <= FIRST;
+				SRAM_ARRAY <= "11011";
+				pixCount <= (others=> '0');
+			elsif(rising_edge(clk) and DispEna ='1')then
+				case(curr_sram_mode)is
+					when FIRST => 
+							SRAM_ARRAY <= "10011"; --NoP
+							dataFlag <= '0';
+							sram_addr <= std_logic_vector("000"&(Pixcount));
+								----xxxxxxx bypassing state to thirdxxxxxxxx-------							
+							curr_sram_mode <= THIRD;
+					when SECOND =>
+							SRAM_ARRAY <= "00100"; --READ mode On and waitng for a clock pulse	
+							dataFlag <= '0';
+							curr_sram_mode <= THIRD;
+					when THIRD =>
+							SRAM_ARRAY <= "00100"; -- Retriveing data Input first 
+							dataFlag <= '1';
+							R  <= (others => '1');--sram_data(9 downto 0);
+							--R  <= ("00"&sram_data(7 downto 0));
+							--R  <= (others => sram_data(0));
+							curr_sram_mode <= FOURTH;
+					when FOURTH => 
+							if(DispEna = '0' or PixCount = X"04B000" )then   --307200 
+								PixCount <= "000000000000000";
+							else 
+								PixCount <= PixCount + 1;
+							end if;
+							curr_sram_mode <= FIRST;
+					end case;
+			 end if;
+		 end process;	
+end behave;
+		
+		--3,3,4,1
